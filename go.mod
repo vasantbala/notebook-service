@@ -2,4 +2,7 @@ module github.com/vasantbala/notebook-service
 
 go 1.25.4
 
-require github.com/go-chi/chi/v5 v5.2.5 // indirect
+require (
+	github.com/go-chi/chi/v5 v5.2.5 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+)
