@@ -1,0 +1,28 @@
+package api
+
+import (
+	"net/http"
+	"github.com/go-chi/chi/v5"
+	"github.com/vasantbala/notebook-service/internal/util"
+)
+
+func NewRouter() http.Handler {
+	r := chi.NewRouter()
+
+	//Add middleware
+
+	//Health check endpoint
+	r.Get("/health", func(w http.ResponseWriter, r *http.Request){
+		util.WriteJSON(w, http.StatusOK, map[string]string{
+			"status": "ok",
+			"service": "notebook-service",
+		})
+	})
+
+	r.Route("/notebooks", func(r chi.Router){
+		r.Get("/", ListNotebooksHandler)
+		r.Post("/", CreateNotebookHandler)
+	})
+
+	return r
+}
