@@ -3,14 +3,17 @@ package api
 import (
 	"net/http"
 
+	"github.com/MicahParks/keyfunc/v3"
 	"github.com/go-chi/chi/v5"
 	"github.com/vasantbala/notebook-service/internal/util"
 )
 
-func NewRouter(h *Handlers) http.Handler {
+func NewRouter(h *Handlers, jwks keyfunc.Keyfunc) http.Handler {
 	r := chi.NewRouter()
 
-	//TODO: Add middleware
+	//Middleware
+	r.Use(LoggerMiddleware)
+	r.Use(AuthMiddleware(jwks))
 
 	//Health check endpoint
 	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
