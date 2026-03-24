@@ -23,6 +23,8 @@ func NewRouter(h *Handlers) http.Handler {
 	r.Route("/notebooks", func(r chi.Router) {
 		r.Get("/", h.ListNotebooks)
 		r.Post("/", h.CreateNotebook)
+		r.Delete("/{notebookID}", h.DeleteNotebook)
+		r.Get("/{notebookID}", h.GetNotebook)
 	})
 
 	return r

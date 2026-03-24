@@ -56,7 +56,7 @@ func (s *inMemNotebookService) CreateNotebook(ctx context.Context, userID, title
 
 func (s *inMemNotebookService) GetNotebook(ctx context.Context, id, userID string) (*model.Notebook, error) {
 	s.mu.RLock()
-	defer s.mu.Unlock()
+	defer s.mu.RUnlock()
 
 	notebook, ok := s.notebooks[id]
 	if !ok || notebook.UserID != userID {

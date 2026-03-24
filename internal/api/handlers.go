@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/vasantbala/notebook-service/internal/service"
 	"github.com/vasantbala/notebook-service/internal/util"
 )
@@ -49,4 +50,34 @@ func (h *Handlers) CreateNotebook(w http.ResponseWriter, r *http.Request) {
 	}
 
 	util.WriteJSON(w, http.StatusCreated, nb)
+}
+
+func (h *Handlers) DeleteNotebook(w http.ResponseWriter, r *http.Request) {
+	//TODO: hardcode user id for now; Will substitute with JWT later
+	userID := "user01"
+
+	notebookId := chi.URLParam(r, "notebookID")
+
+	err := h.Notebooks.DeleteNotebook(r.Context(), notebookId, userID)
+
+	if err != nil {
+		util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	util.WriteJSON(w, http.StatusOK, nil)
+}
+
+func (h *Handlers) GetNotebook(w http.ResponseWriter, r *http.Request) {
+	//TODO: hardcode user id for now; Will substitute with JWT later
+	userID := "user01"
+
+	notebookId := chi.URLParam(r, "notebookID")
+
+	notebook, err := h.Notebooks.GetNotebook(r.Context(), notebookId, userID)
+
+	if err != nil {
+		util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+	}
+
+	util.WriteJSON(w, http.StatusOK, notebook)
 }
