@@ -2,7 +2,7 @@ services:
   notebook-service:
     build:
       context: .
-      dockerfile: Dockerfile.dev
+      dockerfile: Dockerfile
     ports:
       - "8080:8080"
     environment:
@@ -20,10 +20,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    develop:
-      watch:
-        - action: rebuild
-          path: .
+    restart: unless-stopped
 
   postgres:
     image: postgres:16-alpine
@@ -40,6 +37,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
   redis:
     image: redis:7-alpine
@@ -50,6 +48,7 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    restart: unless-stopped
 
 volumes:
   postgres_data:
