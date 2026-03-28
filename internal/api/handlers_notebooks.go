@@ -72,3 +72,24 @@ func (h *Handlers) GetNotebook(w http.ResponseWriter, r *http.Request) {
 
 	util.WriteJSON(w, http.StatusOK, notebook)
 }
+
+func (h *Handlers) UpdateNotebook(w http.ResponseWriter, r *http.Request) {
+	userID, _ := r.Context().Value(UserIDKey).(string)
+	notebookID := chi.URLParam(r, "notebookID")
+
+	var req struct {
+		Title       string `json:"title"`
+		Description string `json:"description"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		util.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	nb, err := h.Notebooks.UpdateNotebook(r.Context(), notebookID, userID, req.Title, req.Description)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	util.WriteJSON(w, http.StatusOK, nb)
+}

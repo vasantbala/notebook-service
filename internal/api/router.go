@@ -27,30 +27,31 @@ func NewRouter(h *Handlers, jwks keyfunc.Keyfunc, jwtCache jwtCache, rl rateLimi
 
 	r.Route("/notebooks", func(r chi.Router) {
 		r.Use(AuthMiddleware(jwks, jwtCache))
-		r.Use(RateLimitMiddleware(rl, 60, time.Minute)) // 60 requests per minute per user		r.Get("/", h.ListNotebooks)
+		r.Use(RateLimitMiddleware(rl, 60, time.Minute)) // 60 requests per minute per user
+		r.Get("/", h.ListNotebooks)
 		r.Post("/", h.CreateNotebook)
 		r.Route("/{notebookID}", func(r chi.Router) {
 			r.Delete("/", h.DeleteNotebook)
 			r.Get("/", h.GetNotebook)
-			//TODO: r.Patch("/", h.UpdateNotebook)
-			// r.Route("/conversations", func(r chi.Router){
-			// 	r.Get("/", h.ListConversations)
-			// 	r.Post("/", h.CreateConversation)
-			// 	r.Route("/{conversationID}", func(r chi.Router) {
-			// 		r.Get("/", h.GetConversation)
-			// 		r.Delete("/", h.DeleteConversation)
-			// 		r.Get("/messages", h.ListMessages)
-			// 		r.Get("/chat", h.ChatStream) // SSE — Phase 13
-			// 	})
-			// })
-			// r.Route("/sources", func(r chi.Router) {
-			// 	r.Get("/", h.ListSources)
-			// 	r.Post("/", h.UploadSource)
-			// 	r.Route("/{sourceID}", func(r chi.Router) {
-			// 		r.Get("/", h.GetSource)
-			// 		r.Delete("/", h.DeleteSource)
-			// 	})
-			// })
+			r.Patch("/", h.UpdateNotebook)
+			r.Route("/conversations", func(r chi.Router) {
+				r.Get("/", h.ListConversations)
+				r.Post("/", h.CreateConversation)
+				r.Route("/{conversationID}", func(r chi.Router) {
+					r.Get("/", h.GetConversation)
+					r.Delete("/", h.DeleteConversation)
+					r.Get("/messages", h.ListMessages)
+					r.Get("/chat", h.ChatStream)
+				})
+			})
+			r.Route("/sources", func(r chi.Router) {
+				r.Get("/", h.ListSources)
+				r.Post("/", h.UploadSource)
+				r.Route("/{sourceID}", func(r chi.Router) {
+					r.Get("/", h.GetSource)
+					r.Delete("/", h.DeleteSource)
+				})
+			})
 		})
 
 	})
