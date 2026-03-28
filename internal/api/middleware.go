@@ -21,6 +21,12 @@ type jwtCache interface {
 	SetUserID(ctx context.Context, rawToken string, userID string, ttl time.Duration) error
 }
 
+// rateLimiter is satisfied by cache.RateLimiter — defined locally to avoid
+// importing the cache package from api.
+type rateLimiter interface {
+	Allow(ctx context.Context, userID string, limit int, window time.Duration) (bool, error)
+}
+
 func LoggerMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
@@ -32,7 +38,6 @@ func LoggerMiddleware(next http.Handler) http.Handler {
 // AuthMiddleware validates a Bearer JWT on every request using the provided
 // JWKS keyfunc. MicahParks/keyfunc refreshes the JWKS keys automatically in
 // the background, so no additional Redis key caching is needed here.
-// TODO: add Redis claim caching (Phase 11c) to skip re-parse for warm tokens.
 func AuthMiddleware(jwks keyfunc.Keyfunc, jc jwtCache) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -82,4 +87,24 @@ func validateToken(bearerToken string, jwks keyfunc.Keyfunc) (string, error) {
 	}
 
 	return sub, nil
+}
+
+// RateLimitMiddleware rejects requests from a user that exceed limit calls
+// within the given window. It reads the userID set by AuthMiddleware, so it
+// must be placed after AuthMiddleware in the chain.
+//
+// The Allow call fails open (returns true) on Redis errors so a Redis outage
+// does not take down the API.
+func RateLimitMiddleware(rl rateLimiter, limit int, window time.Duration) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			userID, _ := r.Context().Value(UserIDKey).(string)
+			ok, err := rl.Allow(r.Context(), userID, limit, window)
+			if err == nil && !ok {
+				http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
 }

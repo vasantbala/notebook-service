@@ -47,7 +47,7 @@ func (r *pgNotebookRepo) Get(ctx context.Context, id, userID string) (*model.Not
 		FROM notebooks WHERE id = $1 AND user_id = $2`, id, userID).Scan(&nb.ID, &nb.UserID, &nb.Title, &nb.Description, &nb.CreatedAt, &nb.UpdatedAt)
 
 	if errors.Is(err, pgx.ErrNoRows) {
-		return nil, fmt.Errorf("%s not found", id)
+		return nil, fmt.Errorf("db get notebook: %w", model.ErrNotFound)
 	}
 
 	if err != nil {
@@ -79,4 +79,22 @@ func (r *pgNotebookRepo) Delete(ctx context.Context, id, userID string) error {
 	}
 
 	return nil
+}
+func (r *pgNotebookRepo) Update(ctx context.Context, id, userID, title, description string) (*model.Notebook, error) {
+	var nb model.Notebook
+	err := r.pool.QueryRow(ctx,
+		`UPDATE notebooks
+                 SET title = $1, description = $2, updated_at = NOW()
+                 WHERE id = $3 AND user_id = $4
+                 RETURNING id, user_id, title, description, created_at, updated_at`,
+		title, description, id, userID,
+	).Scan(&nb.ID, &nb.UserID, &nb.Title, &nb.Description, &nb.CreatedAt, &nb.UpdatedAt)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("db update notebook: %w", model.ErrNotFound)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("db update notebook: %w", err)
+	}
+	return &nb, nil
 }

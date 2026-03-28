@@ -150,3 +150,50 @@ func (r *pgConversationRepo) ListMessages(ctx context.Context, conversationID, u
 	}
 	return result, nil
 }
+func (r *pgConversationRepo) AddMessage(
+	ctx context.Context,
+	conversationID string,
+	role model.Role,
+	content string,
+	tokenCount int,
+	citations []model.Citation,
+) (model.Message, error) {
+	tx, err := r.pool.Begin(ctx)
+	if err != nil {
+		return model.Message{}, fmt.Errorf("db add message begin tx: %w", err)
+	}
+	defer tx.Rollback(ctx) //nolint:errcheck
+
+	var msg model.Message
+	err = tx.QueryRow(ctx,
+		`INSERT INTO messages(conversation_id, role, content, token_count)
+                 VALUES($1, $2, $3, $4)
+                 RETURNING id, conversation_id, role, content, token_count, created_at`,
+		conversationID, role, content, tokenCount,
+	).Scan(&msg.ID, &msg.ConversationID, &msg.Role, &msg.Content, &msg.TokenCount, &msg.CreatedAt)
+	if err != nil {
+		return model.Message{}, fmt.Errorf("db add message insert: %w", err)
+	}
+
+	for i := range citations {
+		var citID string
+		err = tx.QueryRow(ctx,
+			`INSERT INTO citations(message_id, source_id, chunk_index, score)
+                         VALUES($1, $2, $3, $4)
+                         RETURNING id`,
+			msg.ID, citations[i].SourceID, citations[i].ChunkIndex, citations[i].Score,
+		).Scan(&citID)
+		if err != nil {
+			return model.Message{}, fmt.Errorf("db add message citation %d: %w", i, err)
+		}
+		citations[i].ID = citID
+		citations[i].MessageID = msg.ID
+	}
+
+	if err = tx.Commit(ctx); err != nil {
+		return model.Message{}, fmt.Errorf("db add message commit: %w", err)
+	}
+
+	msg.Citations = citations
+	return msg, nil
+}

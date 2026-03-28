@@ -71,3 +71,10 @@ func (s *notebookService) DeleteNotebook(ctx context.Context, id, userID string)
 
 	return nil
 }
+func (s *notebookService) UpdateNotebook(ctx context.Context, id, userID, title, description string) (*model.Notebook, error) {
+	nb, err := s.repository.Update(ctx, id, userID, title, description)
+	if err != nil {
+		return nil, fmt.Errorf("update notebook: %w", err)
+	}
+	return nb, nil
+}

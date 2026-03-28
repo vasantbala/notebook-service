@@ -2,13 +2,14 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/go-chi/chi/v5"
 	"github.com/vasantbala/notebook-service/internal/util"
 )
 
-func NewRouter(h *Handlers, jwks keyfunc.Keyfunc, jwtCache jwtCache) http.Handler {
+func NewRouter(h *Handlers, jwks keyfunc.Keyfunc, jwtCache jwtCache, rl rateLimiter) http.Handler {
 	r := chi.NewRouter()
 
 	//Middleware
@@ -26,7 +27,7 @@ func NewRouter(h *Handlers, jwks keyfunc.Keyfunc, jwtCache jwtCache) http.Handle
 
 	r.Route("/notebooks", func(r chi.Router) {
 		r.Use(AuthMiddleware(jwks, jwtCache))
-		r.Get("/", h.ListNotebooks)
+		r.Use(RateLimitMiddleware(rl, 60, time.Minute)) // 60 requests per minute per user		r.Get("/", h.ListNotebooks)
 		r.Post("/", h.CreateNotebook)
 		r.Route("/{notebookID}", func(r chi.Router) {
 			r.Delete("/", h.DeleteNotebook)

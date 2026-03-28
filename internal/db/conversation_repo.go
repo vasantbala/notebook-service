@@ -12,4 +12,5 @@ type ConversationRepository interface {
 	CreateConversation(ctx context.Context, notebookID, userID, title string) (model.Conversation, error)
 	DeleteConversation(ctx context.Context, id, notebookID, userID string) error
 	ListMessages(ctx context.Context, conversationID, userID string) ([]model.Message, error)
+	AddMessage(ctx context.Context, conversationID string, role model.Role, content string, tokenCount int, citations []model.Citation) (model.Message, error)
 }

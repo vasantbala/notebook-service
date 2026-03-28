@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 
 	"github.com/jackc/pgx/v5"
@@ -71,7 +72,7 @@ func (s *sourceService) UploadSource(ctx context.Context, notebookID, userID, fi
 	//    Run in a goroutine so the handler can return immediately with status=pending.
 	go func() {
 		bgCtx := context.Background() // request context will be cancelled after handler returns
-		if err := s.ingestToRAG(bgCtx, src.ID, userID, filename, mimeType, bearerToken, fileBytes); err != nil {
+		if err := s.ingestToRAG(bgCtx, src.ID, filename, bearerToken, fileBytes); err != nil {
 			// Log only — the handler has already returned. Callers poll status via GetSource.
 			fmt.Printf("rag-anything ingest failed for source %s: %v\n", src.ID, err)
 			_ = s.repo.UpdateStatus(bgCtx, src.ID, model.SourceStatusFailed, 0)
@@ -81,49 +82,54 @@ func (s *sourceService) UploadSource(ctx context.Context, notebookID, userID, fi
 	return src, nil
 }
 
-func (s *sourceService) ingestToRAG(ctx context.Context, sourceID, userID, filename, mimeType, bearerToken string, fileBytes []byte) error {
+func (s *sourceService) ingestToRAG(ctx context.Context, sourceID, filename, bearerToken string, fileBytes []byte) error {
 	_ = s.repo.UpdateStatus(ctx, sourceID, model.SourceStatusProcessing, 0)
 
-	body, err := json.Marshal(map[string]any{
-		"doc_id":      sourceID,
-		"user_id":     userID,
-		"filename":    filename,
-		"source_type": mimeType,
-	})
+	// Build a multipart/form-data body with the file — rag-anything's /upload
+	// endpoint expects an UploadFile field named "file".
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	fw, err := mw.CreateFormFile("file", filename)
 	if err != nil {
-		return fmt.Errorf("marshal ingest request: %w", err)
+		return fmt.Errorf("create form file: %w", err)
 	}
+	if _, err = fw.Write(fileBytes); err != nil {
+		return fmt.Errorf("write form file: %w", err)
+	}
+	mw.Close()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.ragAnythingURL+"/ingest", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.ragAnythingURL+"/upload", &buf)
 	if err != nil {
 		return fmt.Errorf("build ingest request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+bearerToken)
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("call rag-anything /ingest: %w", err)
+		return fmt.Errorf("call rag-anything /upload: %w", err)
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusCreated {
-		return fmt.Errorf("rag-anything /ingest returned %d", resp.StatusCode)
+	// /upload returns 202 Accepted with {doc_id, status}; ingestion runs in the background.
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		return fmt.Errorf("rag-anything /upload returned %d", resp.StatusCode)
 	}
 
-	// Parse the doc_id and chunk_count from the response.
+	// Store the doc_id rag-anything assigned so we can filter /retrieve calls later.
 	var result struct {
-		DocID      string `json:"doc_id"`
-		ChunkCount int    `json:"chunk_count"`
+		DocID  string `json:"doc_id"`
+		Status string `json:"status"`
 	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return fmt.Errorf("decode ingest response: %w", err)
+		return fmt.Errorf("decode upload response: %w", err)
 	}
 
 	if err := s.repo.UpdateRagDocID(ctx, sourceID, result.DocID); err != nil {
 		return fmt.Errorf("update rag_doc_id: %w", err)
 	}
-	if err := s.repo.UpdateStatus(ctx, sourceID, model.SourceStatusReady, result.ChunkCount); err != nil {
+	// rag-anything processes async; mark our record as processing until a webhook/poll updates it.
+	if err := s.repo.UpdateStatus(ctx, sourceID, model.SourceStatusProcessing, 0); err != nil {
 		return fmt.Errorf("update source status: %w", err)
 	}
 	return nil

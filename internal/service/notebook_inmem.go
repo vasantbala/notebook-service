@@ -77,3 +77,17 @@ func (s *inMemNotebookService) DeleteNotebook(ctx context.Context, id, userID st
 	delete(s.notebooks, id)
 	return nil
 }
+func (s *inMemNotebookService) UpdateNotebook(ctx context.Context, id, userID, title, description string) (*model.Notebook, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	nb, ok := s.notebooks[id]
+	if !ok || nb.UserID != userID {
+		return nil, model.ErrNotFound
+	}
+
+	nb.Title = title
+	nb.Description = description
+	nb.UpdatedAt = time.Now().UTC()
+	return nb, nil
+}

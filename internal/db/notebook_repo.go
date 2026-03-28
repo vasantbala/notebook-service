@@ -11,4 +11,5 @@ type NotebookRepository interface {
 	Get(ctx context.Context, id, userID string) (*model.Notebook, error)
 	Create(ctx context.Context, nb model.Notebook) error
 	Delete(ctx context.Context, id, userID string) error
+	Update(ctx context.Context, id, userID, title, description string) (*model.Notebook, error)
 }

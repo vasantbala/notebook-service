@@ -74,3 +74,19 @@ func (s *conversationService) ListMessages(ctx context.Context, conversationID, 
 	_ = s.cache.SetMessages(ctx, conversationID, msgs, messagesCacheTTL)
 	return msgs, nil
 }
+func (s *conversationService) AddMessage(
+	ctx context.Context,
+	conversationID string,
+	role model.Role,
+	content string,
+	tokenCount int,
+	citations []model.Citation,
+) (model.Message, error) {
+	msg, err := s.repo.AddMessage(ctx, conversationID, role, content, tokenCount, citations)
+	if err != nil {
+		return model.Message{}, fmt.Errorf("add message: %w", err)
+	}
+	// Invalidate cache so next ListMessages hits DB with the new message.
+	_ = s.cache.InvalidateMessages(ctx, conversationID)
+	return msg, nil
+}
