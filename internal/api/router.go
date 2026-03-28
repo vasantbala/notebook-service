@@ -6,6 +6,7 @@ import (
 
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/go-chi/chi/v5"
+	httpSwagger "github.com/swaggo/http-swagger"
 	"github.com/vasantbala/notebook-service/internal/util"
 )
 
@@ -24,6 +25,11 @@ func NewRouter(h *Handlers, jwks keyfunc.Keyfunc, jwtCache jwtCache, rl rateLimi
 			"service": "notebook-service",
 		})
 	})
+
+	// Swagger UI — public, no auth
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("/swagger/doc.json"),
+	))
 
 	r.Route("/notebooks", func(r chi.Router) {
 		r.Use(AuthMiddleware(jwks, jwtCache))

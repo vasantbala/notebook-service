@@ -12,6 +12,19 @@ import (
 // maxUploadSize is the maximum file size accepted for source uploads (50 MB).
 const maxUploadSize = 50 << 20
 
+// ListSources godoc
+//
+// @Summary      List sources
+// @Description  Returns all source documents in a notebook.
+// @Tags         sources
+// @Produce      json
+// @Param        notebookID  path  string  true  "Notebook UUID"
+// @Success      200  {array}   model.Source
+// @Failure      401  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/sources/ [get]
 func (h *Handlers) ListSources(w http.ResponseWriter, r *http.Request) {
 	notebookID := chi.URLParam(r, "notebookID")
 	userID, _ := r.Context().Value(UserIDKey).(string)
@@ -24,6 +37,21 @@ func (h *Handlers) ListSources(w http.ResponseWriter, r *http.Request) {
 	util.WriteJSON(w, http.StatusOK, sources)
 }
 
+// GetSource godoc
+//
+// @Summary      Get a source
+// @Description  Returns a single source document including its ingestion status.
+// @Tags         sources
+// @Produce      json
+// @Param        notebookID  path  string  true  "Notebook UUID"
+// @Param        sourceID    path  string  true  "Source UUID"
+// @Success      200  {object}  model.Source
+// @Failure      401  {object}  map[string]string
+// @Failure      403  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/sources/{sourceID} [get]
 func (h *Handlers) GetSource(w http.ResponseWriter, r *http.Request) {
 	notebookID := chi.URLParam(r, "notebookID")
 	sourceID := chi.URLParam(r, "sourceID")
@@ -37,15 +65,23 @@ func (h *Handlers) GetSource(w http.ResponseWriter, r *http.Request) {
 	util.WriteJSON(w, http.StatusOK, src)
 }
 
-// UploadSource handles multipart/form-data uploads.
+// UploadSource godoc
 //
-// Expected form fields:
-//
-//	file        — the file binary (required)
-//	storage_key — object storage key the client pre-uploaded to (optional; defaults to a generated key)
-//
-// The handler forwards the raw bearer token to the service so it can be
-// passed on to rag-anything's /ingest endpoint.
+// @Summary      Upload a source document
+// @Description  Accepts a multipart upload, creates a source record, and enqueues async ingestion into rag-anything.
+// @Tags         sources
+// @Consume      mpfd
+// @Produce      json
+// @Param        notebookID   path      string  true   "Notebook UUID"
+// @Param        file         formData  file    true   "Document file (PDF, DOCX, etc.)"
+// @Param        storage_key  formData  string  false  "Pre-uploaded object storage key (defaults to notebookID/filename)"
+// @Success      202  {object}  model.Source  "Accepted — ingestion is asynchronous"
+// @Failure      400  {object}  map[string]string
+// @Failure      401  {object}  map[string]string
+// @Failure      413  {object}  map[string]string  "File too large (max 50 MB)"
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/sources/ [post]
 func (h *Handlers) UploadSource(w http.ResponseWriter, r *http.Request) {
 	notebookID := chi.URLParam(r, "notebookID")
 	userID, _ := r.Context().Value(UserIDKey).(string)
@@ -87,6 +123,21 @@ func (h *Handlers) UploadSource(w http.ResponseWriter, r *http.Request) {
 	util.WriteJSON(w, http.StatusAccepted, src) // 202 — ingest is async, status=pending
 }
 
+// DeleteSource godoc
+//
+// @Summary      Delete a source
+// @Description  Permanently deletes a source document and removes it from rag-anything.
+// @Tags         sources
+// @Produce      json
+// @Param        notebookID  path  string  true  "Notebook UUID"
+// @Param        sourceID    path  string  true  "Source UUID"
+// @Success      204  "No Content"
+// @Failure      401  {object}  map[string]string
+// @Failure      403  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/sources/{sourceID} [delete]
 func (h *Handlers) DeleteSource(w http.ResponseWriter, r *http.Request) {
 	notebookID := chi.URLParam(r, "notebookID")
 	sourceID := chi.URLParam(r, "sourceID")

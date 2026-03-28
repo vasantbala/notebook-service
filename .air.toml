@@ -1,0 +1,18 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  # Regenerate OpenAPI spec before every recompile so docs stay current.
+  pre_cmd     = ["swag init -g cmd/notebook-service/main.go -o internal/docs"]
+  cmd         = "go build -o ./tmp/main ./cmd/notebook-service"
+  bin         = "./tmp/main"
+  include_ext = ["go"]
+  exclude_dir = ["tmp", "vendor", "internal/docs"]
+  delay       = 1000
+
+[log]
+  time = false
+
+[color]
+  build  = "yellow"
+  runner = "green"

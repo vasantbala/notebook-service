@@ -13,6 +13,28 @@ import (
 	"github.com/vasantbala/notebook-service/internal/util"
 )
 
+// chatStreamRequest is the JSON body for the SSE chat endpoint.
+type chatStreamRequest struct {
+	Query string `json:"query" example:"What are the key ideas in my notes?"`
+	TopK  int    `json:"top_k" example:"5"`
+}
+
+// ChatStream godoc
+//
+// @Summary      Stream a chat response (SSE)
+// @Description  Retrieves relevant source chunks, streams an LLM completion as Server-Sent Events, and persists the exchange.
+// @Tags         conversations
+// @Consume      json
+// @Produce      text/event-stream
+// @Param        notebookID      path  string            true  "Notebook UUID"
+// @Param        conversationID  path  string            true  "Conversation UUID"
+// @Param        body            body  chatStreamRequest  true  "Query and retrieval options"
+// @Success      200  {string}  string  "SSE stream of {\"token\":\"...\"} events, terminated by data: [DONE]"
+// @Failure      400  {object}  map[string]string
+// @Failure      401  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/conversations/{conversationID}/chat [get]
 func (h *Handlers) ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	notebookID := chi.URLParam(r, "notebookID")

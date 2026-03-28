@@ -10,6 +10,24 @@ import (
 	"github.com/vasantbala/notebook-service/internal/util"
 )
 
+// createConversationRequest is the JSON body for POST /notebooks/{notebookID}/conversations/.
+type createConversationRequest struct {
+	Title string `json:"title" example:"Discussion on chapter 3"`
+}
+
+// ListConversations godoc
+//
+// @Summary      List conversations
+// @Description  Returns all conversations in a notebook.
+// @Tags         conversations
+// @Produce      json
+// @Param        notebookID  path  string  true  "Notebook UUID"
+// @Success      200  {array}   model.Conversation
+// @Failure      401  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/conversations/ [get]
 func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 	notebookID := chi.URLParam(r, "notebookID")
 	userID, _ := r.Context().Value(UserIDKey).(string)
@@ -22,6 +40,21 @@ func (h *Handlers) ListConversations(w http.ResponseWriter, r *http.Request) {
 	util.WriteJSON(w, http.StatusOK, convs)
 }
 
+// GetConversation godoc
+//
+// @Summary      Get a conversation
+// @Description  Returns a single conversation by ID.
+// @Tags         conversations
+// @Produce      json
+// @Param        notebookID      path  string  true  "Notebook UUID"
+// @Param        conversationID  path  string  true  "Conversation UUID"
+// @Success      200  {object}  model.Conversation
+// @Failure      401  {object}  map[string]string
+// @Failure      403  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/conversations/{conversationID} [get]
 func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
 	notebookID := chi.URLParam(r, "notebookID")
 	convID := chi.URLParam(r, "conversationID")
@@ -35,6 +68,22 @@ func (h *Handlers) GetConversation(w http.ResponseWriter, r *http.Request) {
 	util.WriteJSON(w, http.StatusOK, conv)
 }
 
+// CreateConversation godoc
+//
+// @Summary      Create a conversation
+// @Description  Creates a new conversation inside a notebook.
+// @Tags         conversations
+// @Consume      json
+// @Produce      json
+// @Param        notebookID  path  string                     true  "Notebook UUID"
+// @Param        body        body  createConversationRequest  true  "Conversation title"
+// @Success      201  {object}  model.Conversation
+// @Failure      400  {object}  map[string]string
+// @Failure      401  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/conversations/ [post]
 func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	notebookID := chi.URLParam(r, "notebookID")
 	userID, _ := r.Context().Value(UserIDKey).(string)
@@ -55,6 +104,21 @@ func (h *Handlers) CreateConversation(w http.ResponseWriter, r *http.Request) {
 	util.WriteJSON(w, http.StatusCreated, conv)
 }
 
+// DeleteConversation godoc
+//
+// @Summary      Delete a conversation
+// @Description  Permanently deletes a conversation and all its messages.
+// @Tags         conversations
+// @Produce      json
+// @Param        notebookID      path  string  true  "Notebook UUID"
+// @Param        conversationID  path  string  true  "Conversation UUID"
+// @Success      204  "No Content"
+// @Failure      401  {object}  map[string]string
+// @Failure      403  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/conversations/{conversationID} [delete]
 func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	notebookID := chi.URLParam(r, "notebookID")
 	convID := chi.URLParam(r, "conversationID")
@@ -67,6 +131,20 @@ func (h *Handlers) DeleteConversation(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
+// ListMessages godoc
+//
+// @Summary      List messages
+// @Description  Returns all messages in a conversation. Checks Redis cache first, falls back to DB.
+// @Tags         conversations
+// @Produce      json
+// @Param        notebookID      path  string  true  "Notebook UUID"
+// @Param        conversationID  path  string  true  "Conversation UUID"
+// @Success      200  {array}   model.Message
+// @Failure      401  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/conversations/{conversationID}/messages [get]
 func (h *Handlers) ListMessages(w http.ResponseWriter, r *http.Request) {
 	convID := chi.URLParam(r, "conversationID")
 	userID, _ := r.Context().Value(UserIDKey).(string)

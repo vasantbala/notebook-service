@@ -1,0 +1,852 @@
+basePath: /
+definitions:
+  api.chatStreamRequest:
+    properties:
+      query:
+        example: What are the key ideas in my notes?
+        type: string
+      top_k:
+        example: 5
+        type: integer
+    type: object
+  api.createConversationRequest:
+    properties:
+      title:
+        example: Discussion on chapter 3
+        type: string
+    type: object
+  api.createNotebookRequest:
+    properties:
+      description:
+        example: Notes on ML papers
+        type: string
+      title:
+        example: My Research
+        type: string
+    type: object
+  api.updateNotebookRequest:
+    properties:
+      description:
+        example: Updated description
+        type: string
+      title:
+        example: Updated Title
+        type: string
+    type: object
+  model.Citation:
+    properties:
+      chunk_index:
+        type: integer
+      id:
+        type: string
+      message_id:
+        type: string
+      score:
+        description: cosine similarity
+        type: number
+      source_id:
+        type: string
+    type: object
+  model.Conversation:
+    properties:
+      created_at:
+        type: string
+      id:
+        type: string
+      notebook_id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  model.Message:
+    properties:
+      citations:
+        description: loaded separately
+        items:
+          $ref: '#/definitions/model.Citation'
+        type: array
+      content:
+        type: string
+      conversation_id:
+        type: string
+      created_at:
+        type: string
+      id:
+        type: string
+      role:
+        $ref: '#/definitions/model.Role'
+      token_count:
+        type: integer
+    type: object
+  model.Notebook:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  model.Role:
+    enum:
+    - user
+    - assistant
+    - system
+    type: string
+    x-enum-varnames:
+    - RoleUser
+    - RoleAssistant
+    - RoleSystem
+  model.Source:
+    properties:
+      chunk_count:
+        type: integer
+      created_at:
+        type: string
+      filename:
+        type: string
+      id:
+        type: string
+      mime_type:
+        type: string
+      notebook_id:
+        type: string
+      rag_doc_id:
+        description: doc_id from rag-anything
+        type: string
+      status:
+        $ref: '#/definitions/model.SourceStatus'
+      storage_key:
+        description: e.g. S3 object key
+        type: string
+      updated_at:
+        type: string
+      user_id:
+        type: string
+    type: object
+  model.SourceStatus:
+    enum:
+    - pending
+    - processing
+    - ready
+    - failed
+    type: string
+    x-enum-varnames:
+    - SourceStatusPending
+    - SourceStatusProcessing
+    - SourceStatusReady
+    - SourceStatusFailed
+host: localhost:8080
+info:
+  contact: {}
+  description: RAG-backed notebook and conversation management service.
+  title: Notebook Service API
+  version: "1.0"
+paths:
+  /notebooks/:
+    get:
+      description: Returns all notebooks belonging to the authenticated user.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Notebook'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List notebooks
+      tags:
+      - notebooks
+    post:
+      description: Creates a new notebook for the authenticated user.
+      parameters:
+      - description: Notebook fields
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.createNotebookRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Notebook'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a notebook
+      tags:
+      - notebooks
+  /notebooks/{notebookID}:
+    delete:
+      description: Permanently deletes a notebook and all its conversations and sources.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a notebook
+      tags:
+      - notebooks
+    get:
+      description: Returns a single notebook by ID. The caller must own it.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Notebook'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a notebook
+      tags:
+      - notebooks
+    patch:
+      description: Updates the title and/or description of a notebook.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Fields to update
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.updateNotebookRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Notebook'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Update a notebook
+      tags:
+      - notebooks
+  /notebooks/{notebookID}/conversations/:
+    get:
+      description: Returns all conversations in a notebook.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Conversation'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List conversations
+      tags:
+      - conversations
+    post:
+      description: Creates a new conversation inside a notebook.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Conversation title
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.createConversationRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/model.Conversation'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Create a conversation
+      tags:
+      - conversations
+  /notebooks/{notebookID}/conversations/{conversationID}:
+    delete:
+      description: Permanently deletes a conversation and all its messages.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Conversation UUID
+        in: path
+        name: conversationID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a conversation
+      tags:
+      - conversations
+    get:
+      description: Returns a single conversation by ID.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Conversation UUID
+        in: path
+        name: conversationID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Conversation'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a conversation
+      tags:
+      - conversations
+  /notebooks/{notebookID}/conversations/{conversationID}/chat:
+    get:
+      description: Retrieves relevant source chunks, streams an LLM completion as
+        Server-Sent Events, and persists the exchange.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Conversation UUID
+        in: path
+        name: conversationID
+        required: true
+        type: string
+      - description: Query and retrieval options
+        in: body
+        name: body
+        required: true
+        schema:
+          $ref: '#/definitions/api.chatStreamRequest'
+      produces:
+      - text/event-stream
+      responses:
+        "200":
+          description: 'SSE stream of {\"token\":\"...\"} events, terminated by data:
+            [DONE]'
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Stream a chat response (SSE)
+      tags:
+      - conversations
+  /notebooks/{notebookID}/conversations/{conversationID}/messages:
+    get:
+      description: Returns all messages in a conversation. Checks Redis cache first,
+        falls back to DB.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Conversation UUID
+        in: path
+        name: conversationID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Message'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List messages
+      tags:
+      - conversations
+  /notebooks/{notebookID}/sources/:
+    get:
+      description: Returns all source documents in a notebook.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/model.Source'
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: List sources
+      tags:
+      - sources
+    post:
+      description: Accepts a multipart upload, creates a source record, and enqueues
+        async ingestion into rag-anything.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Document file (PDF, DOCX, etc.)
+        in: formData
+        name: file
+        required: true
+        type: file
+      - description: Pre-uploaded object storage key (defaults to notebookID/filename)
+        in: formData
+        name: storage_key
+        type: string
+      produces:
+      - application/json
+      responses:
+        "202":
+          description: Accepted — ingestion is asynchronous
+          schema:
+            $ref: '#/definitions/model.Source'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "413":
+          description: File too large (max 50 MB)
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Upload a source document
+      tags:
+      - sources
+  /notebooks/{notebookID}/sources/{sourceID}:
+    delete:
+      description: Permanently deletes a source document and removes it from rag-anything.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Source UUID
+        in: path
+        name: sourceID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "204":
+          description: No Content
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Delete a source
+      tags:
+      - sources
+    get:
+      description: Returns a single source document including its ingestion status.
+      parameters:
+      - description: Notebook UUID
+        in: path
+        name: notebookID
+        required: true
+        type: string
+      - description: Source UUID
+        in: path
+        name: sourceID
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/model.Source'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - BearerAuth: []
+      summary: Get a source
+      tags:
+      - sources
+securityDefinitions:
+  BearerAuth:
+    description: JWT issued by Authentik. Prefix with "Bearer ".
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"

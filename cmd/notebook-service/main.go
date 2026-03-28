@@ -18,10 +18,22 @@ import (
 	"github.com/vasantbala/notebook-service/internal/cache"
 	"github.com/vasantbala/notebook-service/internal/config"
 	"github.com/vasantbala/notebook-service/internal/db"
+	_ "github.com/vasantbala/notebook-service/internal/docs" // registers OpenAPI spec
 	"github.com/vasantbala/notebook-service/internal/llm"
 	"github.com/vasantbala/notebook-service/internal/service"
 )
 
+// @title          Notebook Service API
+// @version        1.0
+// @description    RAG-backed notebook and conversation management service.
+//
+// @host       localhost:8080
+// @BasePath   /
+//
+// @securityDefinitions.apikey  BearerAuth
+// @in                          header
+// @name                        Authorization
+// @description                 JWT issued by Authentik. Prefix with "Bearer ".
 func main() {
 
 	fmt.Println("notebook-service starting up...")
