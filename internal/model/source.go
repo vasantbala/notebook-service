@@ -20,6 +20,7 @@ type Source struct {
 	MimeType   string       `json:"mime_type"   db:"mime_type"`
 	Status     SourceStatus `json:"status"      db:"status"`
 	ChunkCount int          `json:"chunk_count" db:"chunk_count"`
+	RagDocID   string       `json:"rag_doc_id"  db:"rag_doc_id"` // doc_id from rag-anything
 	CreatedAt  time.Time    `json:"created_at"  db:"created_at"`
 	UpdatedAt  time.Time    `json:"updated_at"  db:"updated_at"`
 }

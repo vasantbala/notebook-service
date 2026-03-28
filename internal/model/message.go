@@ -16,6 +16,6 @@ type Message struct {
 	Role           Role       `json:"role" db:"role"`
 	Content        string     `json:"content" db:"content"`
 	TokenCount     int        `json:"token_count" db:"token_count"`
-	Citations      []citation `json:"citation" db:"citation"`
+	Citations      []Citation `json:"citations,omitempty" db:"-"` // loaded separately
 	CreatedAt      time.Time  `json:"created_at"      db:"created_at"`
 }
