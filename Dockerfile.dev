@@ -2,6 +2,10 @@ FROM golang:1.25-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache bash
+
+RUN apk add --no-cache curl
+
 # Install air for live reload
 RUN go install github.com/air-verse/air@latest
 

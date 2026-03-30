@@ -22,7 +22,7 @@ type ChunkResult struct {
 type RetrievalService interface {
 	// Search returns the top-K most relevant chunks for the given doc IDs.
 	// docIDs should be the rag_doc_id values of the notebook's ready sources.
-	Search(ctx context.Context, query, userID string, docIDs []string, topK int) ([]ChunkResult, error)
+	Search(ctx context.Context, query, userID, bearerToken string, docIDs []string, topK int) ([]ChunkResult, error)
 }
 
 type ragAnythingClient struct {
@@ -34,7 +34,7 @@ func NewRAGAnythingClient(baseURL string) RetrievalService {
 	return &ragAnythingClient{baseURL: baseURL, httpClient: &http.Client{}}
 }
 
-func (c *ragAnythingClient) Search(ctx context.Context, query, userID string, docIDs []string, topK int) ([]ChunkResult, error) {
+func (c *ragAnythingClient) Search(ctx context.Context, query, userID, bearerToken string, docIDs []string, topK int) ([]ChunkResult, error) {
 	body, _ := json.Marshal(map[string]any{
 		"question": query,
 		"doc_ids":  docIDs,
@@ -44,8 +44,8 @@ func (c *ragAnythingClient) Search(ctx context.Context, query, userID string, do
 	if err != nil {
 		return nil, fmt.Errorf("build retrieve request: %w", err)
 	}
-	// Forward the caller's auth token so rag-anything can enforce its own authz.
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

@@ -553,7 +553,7 @@ paths:
       tags:
       - conversations
   /notebooks/{notebookID}/conversations/{conversationID}/chat:
-    get:
+    post:
       description: Retrieves relevant source chunks, streams an LLM completion as
         Server-Sent Events, and persists the exchange.
       parameters:

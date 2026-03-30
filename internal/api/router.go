@@ -47,7 +47,7 @@ func NewRouter(h *Handlers, jwks keyfunc.Keyfunc, jwtCache jwtCache, rl rateLimi
 					r.Get("/", h.GetConversation)
 					r.Delete("/", h.DeleteConversation)
 					r.Get("/messages", h.ListMessages)
-					r.Get("/chat", h.ChatStream)
+					r.Post("/chat", h.ChatStream)
 				})
 			})
 			r.Route("/sources", func(r chi.Router) {

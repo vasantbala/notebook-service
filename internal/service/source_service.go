@@ -9,6 +9,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/vasantbala/notebook-service/internal/db"
@@ -98,7 +99,7 @@ func (s *sourceService) ingestToRAG(ctx context.Context, sourceID, filename, bea
 	}
 	mw.Close()
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.ragAnythingURL+"/upload", &buf)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, s.ragAnythingURL+"/documents/upload", &buf)
 	if err != nil {
 		return fmt.Errorf("build ingest request: %w", err)
 	}
@@ -107,13 +108,13 @@ func (s *sourceService) ingestToRAG(ctx context.Context, sourceID, filename, bea
 
 	resp, err := s.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("call rag-anything /upload: %w", err)
+		return fmt.Errorf("call rag-anything /documents/upload: %w", err)
 	}
 	defer resp.Body.Close()
 
 	// /upload returns 202 Accepted with {doc_id, status}; ingestion runs in the background.
 	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
-		return fmt.Errorf("rag-anything /upload returned %d", resp.StatusCode)
+		return fmt.Errorf("rag-anything /documents/upload returned %d", resp.StatusCode)
 	}
 
 	// Store the doc_id rag-anything assigned so we can filter /retrieve calls later.
@@ -128,11 +129,82 @@ func (s *sourceService) ingestToRAG(ctx context.Context, sourceID, filename, bea
 	if err := s.repo.UpdateRagDocID(ctx, sourceID, result.DocID); err != nil {
 		return fmt.Errorf("update rag_doc_id: %w", err)
 	}
-	// rag-anything processes async; mark our record as processing until a webhook/poll updates it.
-	if err := s.repo.UpdateStatus(ctx, sourceID, model.SourceStatusProcessing, 0); err != nil {
-		return fmt.Errorf("update source status: %w", err)
+	// rag-anything processes async; poll until it reports ready or failed.
+	if err := s.pollUntilDone(ctx, sourceID, result.DocID, bearerToken); err != nil {
+		return fmt.Errorf("polling rag status: %w", err)
 	}
 	return nil
+}
+
+// pollUntilDone polls GET /documents on rag-anything every 5 seconds until the
+// document's status is "ready" or "failed", then updates the notebook-service DB.
+// It gives up after 10 minutes.
+func (s *sourceService) pollUntilDone(ctx context.Context, sourceID, docID, bearerToken string) error {
+	const (
+		interval = 5 * time.Second
+		timeout  = 10 * time.Minute
+	)
+	deadline := time.Now().Add(timeout)
+
+	for time.Now().Before(deadline) {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(interval):
+		}
+
+		ragStatus, chunkCount, err := s.fetchDocStatus(ctx, docID, bearerToken)
+		if err != nil {
+			// transient error — keep polling
+			fmt.Printf("poll rag status error (source=%s): %v\n", sourceID, err)
+			continue
+		}
+
+		switch ragStatus {
+		case "ready":
+			return s.repo.UpdateStatus(ctx, sourceID, model.SourceStatusReady, chunkCount)
+		case "failed":
+			_ = s.repo.UpdateStatus(ctx, sourceID, model.SourceStatusFailed, 0)
+			return fmt.Errorf("rag-anything reported failed for doc_id=%s", docID)
+		}
+		// still "processing" — keep waiting
+	}
+	return fmt.Errorf("rag-anything ingestion timed out after %s for doc_id=%s", timeout, docID)
+}
+
+// fetchDocStatus calls GET /documents on rag-anything and finds the status for docID.
+func (s *sourceService) fetchDocStatus(ctx context.Context, docID, bearerToken string) (status string, chunkCount int, err error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.ragAnythingURL+"/documents", nil)
+	if err != nil {
+		return "", 0, fmt.Errorf("build status request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+bearerToken)
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		return "", 0, fmt.Errorf("GET /documents: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", 0, fmt.Errorf("GET /documents returned %d", resp.StatusCode)
+	}
+
+	var docs []struct {
+		DocID      string `json:"doc_id"`
+		Status     string `json:"status"`
+		ChunkCount int    `json:"chunk_count"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&docs); err != nil {
+		return "", 0, fmt.Errorf("decode /documents response: %w", err)
+	}
+
+	for _, d := range docs {
+		if d.DocID == docID {
+			return d.Status, d.ChunkCount, nil
+		}
+	}
+	return "", 0, fmt.Errorf("doc_id=%s not found in /documents response", docID)
 }
 
 func (s *sourceService) DeleteSource(ctx context.Context, id, notebookID, userID string) error {

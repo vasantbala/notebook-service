@@ -634,7 +634,7 @@ const docTemplate = `{
             }
         },
         "/notebooks/{notebookID}/conversations/{conversationID}/chat": {
-            "get": {
+            "post": {
                 "security": [
                     {
                         "BearerAuth": []

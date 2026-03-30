@@ -5,6 +5,9 @@ services:
       dockerfile: Dockerfile.dev
     ports:
       - "8080:8080"
+    networks:
+      - default
+      - dev-net
     environment:
       PORT: "8080"
       DATABASE_URL: postgres://notebook:notebook@postgres:5432/notebook?sslmode=disable
@@ -53,3 +56,8 @@ services:
 
 volumes:
   postgres_data:
+
+networks:
+  default: {}
+  dev-net:
+    external: true

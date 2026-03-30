@@ -34,12 +34,13 @@ type chatStreamRequest struct {
 // @Failure      401  {object}  map[string]string
 // @Failure      500  {object}  map[string]string
 // @Security     BearerAuth
-// @Router       /notebooks/{notebookID}/conversations/{conversationID}/chat [get]
+// @Router       /notebooks/{notebookID}/conversations/{conversationID}/chat [post]
 func (h *Handlers) ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	notebookID := chi.URLParam(r, "notebookID")
 	conversationID := chi.URLParam(r, "conversationID")
 	userID, _ := r.Context().Value(UserIDKey).(string)
+	bearerToken := strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer ")
 
 	var req struct {
 		Query string `json:"query"`
@@ -70,7 +71,7 @@ func (h *Handlers) ChatStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	chunks, err := h.Retrieval.Search(r.Context(), req.Query, userID, docIDs, req.TopK)
+	chunks, err := h.Retrieval.Search(r.Context(), req.Query, userID, bearerToken, docIDs, req.TopK)
 	if err != nil {
 		util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
