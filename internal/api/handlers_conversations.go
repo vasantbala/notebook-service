@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/vasantbala/notebook-service/internal/db"
 	"github.com/vasantbala/notebook-service/internal/model"
 	"github.com/vasantbala/notebook-service/internal/util"
 )
@@ -170,4 +171,55 @@ func handleServiceError(w http.ResponseWriter, err error) {
 	default:
 		util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": "internal error"})
 	}
+}
+
+// updateConversationRequest is the JSON body for PATCH /conversations/{conversationID}.
+type updateConversationRequest struct {
+	Title        *string `json:"title"`
+	RAGEnabled   *bool   `json:"rag_enabled"`
+	UseReasoning *bool   `json:"use_reasoning"`
+	Model        *string `json:"model"` // set to "" to clear the per-conversation override
+}
+
+// UpdateConversation godoc
+//
+// @Summary      Update a conversation
+// @Description  Partially updates a conversation's title, RAG toggle, reasoning toggle, or model override.
+// @Tags         conversations
+// @Consume      json
+// @Produce      json
+// @Param        notebookID      path  string                     true  "Notebook UUID"
+// @Param        conversationID  path  string                     true  "Conversation UUID"
+// @Param        body            body  updateConversationRequest  true  "Fields to update"
+// @Success      200  {object}  model.Conversation
+// @Failure      400  {object}  map[string]string
+// @Failure      401  {object}  map[string]string
+// @Failure      404  {object}  map[string]string
+// @Failure      500  {object}  map[string]string
+// @Security     BearerAuth
+// @Router       /notebooks/{notebookID}/conversations/{conversationID} [patch]
+func (h *Handlers) UpdateConversation(w http.ResponseWriter, r *http.Request) {
+	notebookID := chi.URLParam(r, "notebookID")
+	convID := chi.URLParam(r, "conversationID")
+	userID, _ := r.Context().Value(UserIDKey).(string)
+
+	var req updateConversationRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		util.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
+		return
+	}
+
+	patch := db.ConversationPatch{
+		Title:        req.Title,
+		RAGEnabled:   req.RAGEnabled,
+		UseReasoning: req.UseReasoning,
+		Model:        req.Model,
+	}
+
+	conv, err := h.Conversations.UpdateConversation(r.Context(), convID, notebookID, userID, patch)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+	util.WriteJSON(w, http.StatusOK, conv)
 }

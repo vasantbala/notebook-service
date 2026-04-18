@@ -20,6 +20,7 @@ import (
 	"github.com/vasantbala/notebook-service/internal/db"
 	_ "github.com/vasantbala/notebook-service/internal/docs" // registers OpenAPI spec
 	"github.com/vasantbala/notebook-service/internal/llm"
+	"github.com/vasantbala/notebook-service/internal/observability"
 	"github.com/vasantbala/notebook-service/internal/service"
 )
 
@@ -67,9 +68,18 @@ func main() {
 	conversationRepo := db.NewPGConversationRepo(pool)
 	sourceRepo := db.NewPGSourceRepo(pool)
 
+	// Init observability (no-op when LANGFUSE_PUBLIC_KEY is unset).
+	tp, err := observability.Init(context.Background(), cfg.Langfuse)
+	if err != nil {
+		log.Fatalf("failed to init observability: %v", err)
+	}
+	if tp != nil {
+		defer func() { _ = tp.Shutdown(context.Background()) }()
+	}
+
 	//clients
 	ragClient := service.NewRAGAnythingClient(cfg.RAGAnythingBaseUrl)
-	llmClient := llm.NewOpenAIClient(cfg.OpenAI.APIKey, cfg.OpenAI.Model, cfg.OpenAI.BaseUrl)
+	llmClient := llm.NewOpenAIClient(cfg.OpenAI.APIKey, cfg.OpenAI.Model, cfg.OpenAI.BaseUrl, cfg.OpenAI.ReasoningModel)
 
 	h := &api.Handlers{
 		Notebooks:     service.NewNotebookService(notebookRepo),
@@ -77,6 +87,12 @@ func main() {
 		Sources:       service.NewSourceService(sourceRepo, cfg.RAGAnythingBaseUrl),
 		Retrieval:     ragClient,
 		LLM:           llmClient,
+		Config: api.HandlerConfig{
+			StandardModel:   cfg.OpenAI.Model,
+			ReasoningModel:  cfg.OpenAI.ReasoningModel,
+			ReasoningEffort: cfg.ReasoningEffort,
+			LangfuseCfg:     cfg.Langfuse,
+		},
 	}
 	r := api.NewRouter(h, jwks, jwtCache, rateLimitCache)
 

@@ -31,6 +31,9 @@ func NewRouter(h *Handlers, jwks keyfunc.Keyfunc, jwtCache jwtCache, rl rateLimi
 		httpSwagger.URL("/swagger/doc.json"),
 	))
 
+	// Models endpoint — public, no auth required (model names are not sensitive)
+	r.Get("/models", h.ListModels)
+
 	r.Route("/notebooks", func(r chi.Router) {
 		r.Use(AuthMiddleware(jwks, jwtCache))
 		r.Use(RateLimitMiddleware(rl, 60, time.Minute)) // 60 requests per minute per user
@@ -45,6 +48,7 @@ func NewRouter(h *Handlers, jwks keyfunc.Keyfunc, jwtCache jwtCache, rl rateLimi
 				r.Post("/", h.CreateConversation)
 				r.Route("/{conversationID}", func(r chi.Router) {
 					r.Get("/", h.GetConversation)
+					r.Patch("/", h.UpdateConversation)
 					r.Delete("/", h.DeleteConversation)
 					r.Get("/messages", h.ListMessages)
 					r.Post("/chat", h.ChatStream)

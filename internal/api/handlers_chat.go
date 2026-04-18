@@ -8,7 +8,9 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/vasantbala/notebook-service/internal/llm"
 	"github.com/vasantbala/notebook-service/internal/model"
+	"github.com/vasantbala/notebook-service/internal/observability"
 	"github.com/vasantbala/notebook-service/internal/service"
 	"github.com/vasantbala/notebook-service/internal/util"
 )
@@ -22,7 +24,7 @@ type chatStreamRequest struct {
 // ChatStream godoc
 //
 // @Summary      Stream a chat response (SSE)
-// @Description  Retrieves relevant source chunks, streams an LLM completion as Server-Sent Events, and persists the exchange.
+// @Description  Retrieves relevant source chunks (when RAG is enabled), streams an LLM completion as Server-Sent Events, and persists the exchange.
 // @Tags         conversations
 // @Consume      json
 // @Produce      text/event-stream
@@ -44,69 +46,112 @@ func (h *Handlers) ChatStream(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Query string `json:"query"`
-		TopK  int    `json:"top_k"` //optional, defaults to 5
+		TopK  int    `json:"top_k"` // optional, defaults to 5
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		util.WriteJSON(w, http.StatusBadRequest, map[string]string{"error": "invalid JSON"})
 		return
 	}
-
 	if req.TopK == 0 {
 		req.TopK = 5
 	}
 
-	// 1. Load conversation history (redis -> db fallback)
-	history, err := h.Conversations.ListMessages(r.Context(), conversationID, userID)
+	// 1. Load conversation (provides RAG/reasoning toggles and model override).
+	tracer := observability.Tracer()
+	ctx, rootSpan := tracer.Start(r.Context(), "notebook-chat")
+	defer rootSpan.End()
+	observability.SpanSetUser(rootSpan, userID)
+	observability.SpanSetInput(rootSpan, req.Query)
 
+	conv, err := h.Conversations.GetConversation(ctx, conversationID, notebookID, userID)
+	if err != nil {
+		handleServiceError(w, err)
+		return
+	}
+
+	// 2. Load conversation history (redis -> db fallback).
+	history, err := h.Conversations.ListMessages(ctx, conversationID, userID)
 	if err != nil {
 		util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	//2. Look up rag_doc_ids for the notebook's ready sources, then retreive chunks
-	docIDs, err := h.Sources.ListRagDocIDs(r.Context(), notebookID, userID)
-
-	if err != nil {
-		util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
+	// 3. Optionally retrieve RAG chunks — skip when RAG is disabled.
+	var chunks []service.ChunkResult
+	if conv.RAGEnabled {
+		_, ragSpan := tracer.Start(ctx, "rag-retrieval")
+		docIDs, err := h.Sources.ListRagDocIDs(ctx, notebookID, userID)
+		if err != nil {
+			util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			ragSpan.End()
+			return
+		}
+		chunks, err = h.Retrieval.Search(ctx, req.Query, userID, bearerToken, docIDs, req.TopK)
+		if err != nil {
+			util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
+			ragSpan.End()
+			return
+		}
+		observability.SpanSetRAGChunks(ragSpan, len(chunks))
+		ragSpan.End()
 	}
 
-	chunks, err := h.Retrieval.Search(r.Context(), req.Query, userID, bearerToken, docIDs, req.TopK)
-	if err != nil {
-		util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
-		return
-	}
-
-	// 3. Build prompt
+	// 4. Build prompt (empty chunks produce a plain prompt — no special casing needed).
 	msgs := service.BuildChatMessages("", chunks, history, req.Query)
 
-	//4. Persist user message
-	if _, err := h.Conversations.AddMessage(r.Context(), conversationID, model.RoleUser, req.Query, 0, nil); err != nil {
+	// 5. Persist user message.
+	if _, err := h.Conversations.AddMessage(ctx, conversationID, model.RoleUser, req.Query, 0, nil); err != nil {
 		util.WriteJSON(w, http.StatusInternalServerError, map[string]string{"error": err.Error()})
 		return
 	}
 
-	// 5. Stream SSE response
+	// 6. Stream SSE response.
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
 	flusher, ok := w.(http.Flusher)
-
 	if !ok {
 		http.Error(w, "streaming not supported", http.StatusInternalServerError)
 		return
 	}
 
-	tokens := make(chan string, 32) // buffered — LLM can run slightly ahead of the writer
+	// Resolve model name: per-conversation override > reasoning default > standard default.
+	streamOpts := llm.StreamOptions{
+		UseReasoning:    conv.UseReasoning,
+		ReasoningEffort: h.Config.ReasoningEffort,
+		ModelOverride:   conv.Model,
+	}
+
+	// Determine the effective model name for the span tag.
+	effectiveModel := h.Config.StandardModel
+	if conv.UseReasoning && h.Config.ReasoningModel != "" {
+		effectiveModel = h.Config.ReasoningModel
+	}
+	if conv.Model != nil {
+		effectiveModel = *conv.Model
+	}
+	_, llmSpan := tracer.Start(ctx, "llm-generation")
+	observability.SpanSetModel(llmSpan, effectiveModel)
+
+	// For reasoning models, emit a thinking event before tokens begin so the UI
+	// can show an indicator during the silent pre-generation phase.
+	if conv.UseReasoning {
+		fmt.Fprint(w, "event: thinking\ndata: {}\n\n")
+		flusher.Flush()
+	}
+
+	tokens := make(chan string, 32) // buffered so LLM can run slightly ahead of writer
 	var assistantReply strings.Builder
 
-	go h.LLM.Stream(r.Context(), msgs, tokens)
+	go h.LLM.StreamWithOptions(r.Context(), msgs, streamOpts, tokens)
 
 	for {
 		select {
 		case token, open := <-tokens:
 			if !open {
-				//6. Persist assistant message + citations
+				observability.SpanSetOutput(llmSpan, assistantReply.String())
+				llmSpan.End()
+				// 7. Persist assistant message + citations in the background.
 				go func() {
 					ctx := context.Background()
 					citations := make([]model.Citation, len(chunks))
@@ -117,7 +162,6 @@ func (h *Handlers) ChatStream(w http.ResponseWriter, r *http.Request) {
 							Score:      c.RerankerScore,
 						}
 					}
-
 					_, _ = h.Conversations.AddMessage(
 						ctx, conversationID,
 						model.RoleAssistant, assistantReply.String(), 0, citations)

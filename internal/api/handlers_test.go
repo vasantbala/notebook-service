@@ -15,6 +15,7 @@ import (
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
+	"github.com/vasantbala/notebook-service/internal/db"
 	"github.com/vasantbala/notebook-service/internal/model"
 	"github.com/vasantbala/notebook-service/internal/service"
 )
@@ -124,6 +125,28 @@ func (s *inMemConversationService) AddMessage(_ context.Context, conversationID 
 	}
 	s.messages[conversationID] = append(s.messages[conversationID], msg)
 	return msg, nil
+}
+
+func (s *inMemConversationService) UpdateConversation(_ context.Context, id, notebookID, userID string, patch db.ConversationPatch) (*model.Conversation, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	c, ok := s.conversations[id]
+	if !ok || c.NotebookID != notebookID || c.UserID != userID {
+		return nil, model.ErrNotFound
+	}
+	if patch.Title != nil {
+		c.Title = *patch.Title
+	}
+	if patch.RAGEnabled != nil {
+		c.RAGEnabled = *patch.RAGEnabled
+	}
+	if patch.UseReasoning != nil {
+		c.UseReasoning = *patch.UseReasoning
+	}
+	if patch.Model != nil {
+		c.Model = patch.Model
+	}
+	return c, nil
 }
 
 // inMemSourceService is a minimal stub — UploadSource always succeeds with status=pending.

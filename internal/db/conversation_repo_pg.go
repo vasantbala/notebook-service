@@ -19,7 +19,7 @@ func NewPGConversationRepo(pool *pgxpool.Pool) ConversationRepository {
 
 func (r *pgConversationRepo) ListConversations(ctx context.Context, notebookID, userID string) ([]model.Conversation, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT id, notebook_id, user_id, title, created_at, updated_at 
+		`SELECT id, notebook_id, user_id, title, rag_enabled, use_reasoning, model, created_at, updated_at
 				FROM conversations WHERE user_id = $1 AND notebook_id = $2`, userID, notebookID)
 	if err != nil {
 		return nil, fmt.Errorf("db list conversations %w", err)
@@ -30,7 +30,7 @@ func (r *pgConversationRepo) ListConversations(ctx context.Context, notebookID, 
 	var conversations []model.Conversation
 	for rows.Next() {
 		var cv model.Conversation
-		err := rows.Scan(&cv.ID, &cv.NotebookID, &cv.UserID, &cv.Title, &cv.CreatedAt, &cv.UpdatedAt)
+		err := rows.Scan(&cv.ID, &cv.NotebookID, &cv.UserID, &cv.Title, &cv.RAGEnabled, &cv.UseReasoning, &cv.Model, &cv.CreatedAt, &cv.UpdatedAt)
 
 		if err != nil {
 			return nil, fmt.Errorf("db list conversations scan %w", err)
@@ -44,13 +44,13 @@ func (r *pgConversationRepo) ListConversations(ctx context.Context, notebookID, 
 }
 
 func (r *pgConversationRepo) GetConversation(ctx context.Context, id, notebookID, userID string) (*model.Conversation, error) {
-	row := r.pool.QueryRow(ctx, `SELECT id, notebook_id, user_id, title, created_at, updated_at 
+	row := r.pool.QueryRow(ctx, `SELECT id, notebook_id, user_id, title, rag_enabled, use_reasoning, model, created_at, updated_at
 				FROM conversations WHERE user_id = $1 AND notebook_id = $2 AND id = $3`, userID, notebookID, id)
 	var cv model.Conversation
-	err := row.Scan(&cv.ID, &cv.NotebookID, &cv.UserID, &cv.Title, &cv.CreatedAt, &cv.UpdatedAt)
+	err := row.Scan(&cv.ID, &cv.NotebookID, &cv.UserID, &cv.Title, &cv.RAGEnabled, &cv.UseReasoning, &cv.Model, &cv.CreatedAt, &cv.UpdatedAt)
 
 	if err != nil {
-		return nil, fmt.Errorf("db list conversations scan %w", err)
+		return nil, fmt.Errorf("db get conversation scan %w", err)
 	}
 
 	return &cv, nil
@@ -62,13 +62,36 @@ func (r *pgConversationRepo) CreateConversation(ctx context.Context, notebookID,
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO conversations(notebook_id, user_id, title, created_at, updated_at)
 		 VALUES($1, $2, $3, $4, $5)
-		 RETURNING id, notebook_id, user_id, title, created_at, updated_at`,
+		 RETURNING id, notebook_id, user_id, title, rag_enabled, use_reasoning, model, created_at, updated_at`,
 		notebookID, userID, title, now, now,
-	).Scan(&cv.ID, &cv.NotebookID, &cv.UserID, &cv.Title, &cv.CreatedAt, &cv.UpdatedAt)
+	).Scan(&cv.ID, &cv.NotebookID, &cv.UserID, &cv.Title, &cv.RAGEnabled, &cv.UseReasoning, &cv.Model, &cv.CreatedAt, &cv.UpdatedAt)
 	if err != nil {
 		return model.Conversation{}, fmt.Errorf("db create conversation: %w", err)
 	}
 	return cv, nil
+}
+
+func (r *pgConversationRepo) UpdateConversation(ctx context.Context, id, notebookID, userID string, patch ConversationPatch) (*model.Conversation, error) {
+	now := time.Now().UTC()
+	var cv model.Conversation
+	err := r.pool.QueryRow(ctx,
+		`UPDATE conversations
+		 SET title         = COALESCE($4, title),
+		     rag_enabled   = COALESCE($5, rag_enabled),
+		     use_reasoning = COALESCE($6, use_reasoning),
+		     model         = CASE WHEN $7::boolean THEN $8 ELSE model END,
+		     updated_at    = $9
+		 WHERE id = $1 AND notebook_id = $2 AND user_id = $3
+		 RETURNING id, notebook_id, user_id, title, rag_enabled, use_reasoning, model, created_at, updated_at`,
+		id, notebookID, userID,
+		patch.Title, patch.RAGEnabled, patch.UseReasoning,
+		patch.Model != nil, patch.Model, // bool flag + value avoids NULL ambiguity
+		now,
+	).Scan(&cv.ID, &cv.NotebookID, &cv.UserID, &cv.Title, &cv.RAGEnabled, &cv.UseReasoning, &cv.Model, &cv.CreatedAt, &cv.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("db update conversation: %w", err)
+	}
+	return &cv, nil
 }
 
 func (r *pgConversationRepo) DeleteConversation(ctx context.Context, id, notebookID, userID string) error {

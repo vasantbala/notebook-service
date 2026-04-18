@@ -59,6 +59,17 @@ func (s *conversationService) DeleteConversation(ctx context.Context, id, notebo
 	return nil
 }
 
+func (s *conversationService) UpdateConversation(ctx context.Context, id, notebookID, userID string, patch db.ConversationPatch) (*model.Conversation, error) {
+	conv, err := s.repo.UpdateConversation(ctx, id, notebookID, userID, patch)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, fmt.Errorf("update conversation: %w", model.ErrNotFound)
+		}
+		return nil, fmt.Errorf("update conversation: %w", err)
+	}
+	return conv, nil
+}
+
 func (s *conversationService) ListMessages(ctx context.Context, conversationID, userID string) ([]model.Message, error) {
 	// Cache-first: warm path avoids a DB round-trip on every chat turn.
 	if msgs, err := s.cache.GetMessages(ctx, conversationID); err == nil && msgs != nil {

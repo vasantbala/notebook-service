@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 
+	"github.com/vasantbala/notebook-service/internal/db"
 	"github.com/vasantbala/notebook-service/internal/model"
 )
 
@@ -10,8 +11,10 @@ type ConversationService interface {
 	ListConversations(ctx context.Context, notebookID, userID string) ([]model.Conversation, error)
 	GetConversation(ctx context.Context, id, notebookID, userID string) (*model.Conversation, error)
 	CreateConversation(ctx context.Context, notebookID, userID, title string) (model.Conversation, error)
+	UpdateConversation(ctx context.Context, id, notebookID, userID string, patch db.ConversationPatch) (*model.Conversation, error)
 	DeleteConversation(ctx context.Context, id, notebookID, userID string) error
 	// ListMessages loads from cache first, then DB.
-	ListMessages(ctx context.Context, conversationID, userID string) ([]model.Message, error) // AddMessage persists a message (and its citations) and invalidates the message cache.
+	ListMessages(ctx context.Context, conversationID, userID string) ([]model.Message, error)
+	// AddMessage persists a message (and its citations) and invalidates the message cache.
 	AddMessage(ctx context.Context, conversationID string, role model.Role, content string, tokenCount int, citations []model.Citation) (model.Message, error)
 }
